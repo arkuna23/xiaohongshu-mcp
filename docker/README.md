@@ -115,7 +115,7 @@ environment:
   - XHS_PROXY=http://user:pass@proxy:port
 ```
 
-支持 HTTP/HTTPS/SOCKS5 代理。日志中会自动隐藏代理的认证信息，输出示例：
+支持 HTTP/HTTPS/SOCKS5 代理。HTTP/HTTPS 代理支持在 URL 中填写用户名和密码；SOCKS5 代理请使用免认证地址。日志中会自动隐藏代理的认证信息，输出示例：
 
 ```
 Using proxy: http://***:***@proxy:port

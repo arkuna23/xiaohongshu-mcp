@@ -497,7 +497,7 @@ XHS_PROXY=http://user:pass@proxy:port ./xiaohongshu-mcp-darwin-arm64
 XHS_PROXY=http://proxy:port go run .
 ```
 
-支持 HTTP/HTTPS/SOCKS5 代理，日志中会自动隐藏代理的认证信息。
+支持 HTTP/HTTPS/SOCKS5 代理，日志中会自动隐藏代理的认证信息。HTTP/HTTPS 代理支持在 URL 中填写用户名和密码（如 `http://user:pass@proxy:port`）；SOCKS5 代理请使用免认证地址。
 
 **访问鉴权（可选）**：
 

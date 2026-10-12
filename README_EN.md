@@ -499,7 +499,7 @@ XHS_PROXY=http://user:pass@proxy:port ./xiaohongshu-mcp-darwin-arm64
 XHS_PROXY=http://proxy:port go run .
 ```
 
-HTTP/HTTPS/SOCKS5 proxies are supported, and proxy credentials are automatically masked in the logs.
+HTTP/HTTPS/SOCKS5 proxies are supported, and proxy credentials are automatically masked in the logs. HTTP/HTTPS proxies accept credentials in the URL (e.g. `http://user:pass@proxy:port`); use an authentication-free address for SOCKS5 proxies.
 
 **Optional authentication**:
 

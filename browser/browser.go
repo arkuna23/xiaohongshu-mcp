@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/go-rod/rod"
+	"github.com/go-rod/rod/lib/proto"
 	"github.com/sirupsen/logrus"
 	"github.com/xpzouying/headless_browser"
 	"github.com/xpzouying/xiaohongshu-mcp/cookies"
@@ -74,9 +76,19 @@ func NewBrowser(headless bool, options ...Option) *headless_browser.Browser {
 	}
 	opts = append(opts, headless_browser.WithChromeBinPath(binPath))
 
-	// 代理（由调用方经 Option 传入，env 读取放在入口层）。
+	// Chromium 只接收代理地址，认证信息通过 CDP 提供。
+	var proxyUser *url.Userinfo
 	if cfg.proxy != "" {
-		opts = append(opts, headless_browser.WithProxy(cfg.proxy))
+		proxyURL, err := url.Parse(cfg.proxy)
+		if err != nil || proxyURL.Host == "" {
+			panic("代理地址无效，请检查 XHS_PROXY")
+		}
+		if proxyURL.User != nil && proxyURL.Scheme != "http" && proxyURL.Scheme != "https" {
+			panic("带认证的代理仅支持 HTTP/HTTPS")
+		}
+		proxyUser = proxyURL.User
+		proxyURL.User = nil
+		opts = append(opts, headless_browser.WithProxy(proxyURL.String()))
 		logrus.Infof("Using proxy: %s", maskProxyCredentials(cfg.proxy))
 	}
 
@@ -97,5 +109,48 @@ func NewBrowser(headless bool, options ...Option) *headless_browser.Browser {
 		logrus.Warnf("failed to load cookies: %v", err)
 	}
 
-	return headless_browser.New(opts...)
+	b := headless_browser.New(opts...)
+	if proxyUser != nil {
+		page := b.NewPage()
+		rawBrowser := page.Browser()
+		page.MustClose()
+		if err := enableProxyAuth(rawBrowser, proxyUser); err != nil {
+			b.Close()
+			panic(fmt.Sprintf("启用代理认证失败: %v", err))
+		}
+	}
+	return b
+}
+
+func enableProxyAuth(b *rod.Browser, user *url.Userinfo) error {
+	password, _ := user.Password()
+	attempted := make(map[proto.FetchRequestID]bool)
+	wait := b.EachEvent(
+		func(e *proto.FetchRequestPaused) {
+			if err := (proto.FetchContinueRequest{RequestID: e.RequestID}).Call(b); err != nil {
+				logrus.Warnf("继续代理请求失败: %v", err)
+			}
+		},
+		func(e *proto.FetchAuthRequired) {
+			response := &proto.FetchAuthChallengeResponse{
+				Response: proto.FetchAuthChallengeResponseResponseDefault,
+			}
+			if e.AuthChallenge.Source == proto.FetchAuthChallengeSourceProxy {
+				response.Response = proto.FetchAuthChallengeResponseResponseCancelAuth
+				if !attempted[e.RequestID] {
+					attempted[e.RequestID] = true
+					response.Response = proto.FetchAuthChallengeResponseResponseProvideCredentials
+					response.Username = user.Username()
+					response.Password = password
+				}
+			}
+			if err := (proto.FetchContinueWithAuth{
+				RequestID: e.RequestID, AuthChallengeResponse: response,
+			}).Call(b); err != nil {
+				logrus.Warnf("响应代理认证失败: %v", err)
+			}
+		},
+	)
+	go wait()
+	return (proto.FetchEnable{HandleAuthRequests: true}).Call(b)
 }
