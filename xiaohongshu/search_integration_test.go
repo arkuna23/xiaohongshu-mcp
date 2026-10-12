@@ -8,7 +8,9 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/go-rod/rod"
 	"github.com/stretchr/testify/require"
 	"github.com/xpzouying/xiaohongshu-mcp/browser"
 )
@@ -34,6 +36,32 @@ func TestSearch(t *testing.T) {
 		fmt.Printf("Feed ID: %s\n", feed.ID)
 		fmt.Printf("Feed Title: %s\n", feed.NoteCard.DisplayTitle)
 	}
+}
+
+func TestSearchReadsResultsWhilePageChanges(t *testing.T) {
+	b := browser.NewBrowser(true)
+	defer b.Close()
+	page := b.NewPage()
+	defer page.Close()
+	router := page.HijackRequests()
+	require.NoError(t, router.Add("*", "", func(h *rod.Hijack) {
+		h.Response.SetHeader("Content-Type", "text/html; charset=utf-8").SetBody(`
+			<html><body><div id="changing"></div><script>
+			window.__INITIAL_STATE__ = {search: {feeds: {value: [
+				{id: "note-1", modelType: "note", noteCard: {displayTitle: "咖啡"}}
+			]}}};
+			let tick = 0;
+			setInterval(() => document.querySelector("#changing").textContent = ++tick, 20);
+			</script></body></html>`)
+	}))
+	go router.Run()
+	defer router.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	feeds, err := NewSearchAction(page).Search(ctx, "咖啡")
+	require.NoError(t, err)
+	require.Len(t, feeds, 1)
+	require.Equal(t, "note-1", feeds[0].ID)
 }
 
 func TestSearchWithFilters(t *testing.T) {
